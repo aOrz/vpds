@@ -14,6 +14,7 @@
 4. `npm i` or `yarn` 安装依赖
 5. 将 `sql`文件夹下的 sql 导入数据库
 6. `cp config/index.demo.js index.js` 修改 index.js，配置七牛云 ak,sk,bucketName,url等，以及配置数据库。
-7. `npm run start` 开始你的开发之旅吧
+7. 安装 Sinopia npm 私有仓库，或者直接使用 npmjs.org，在命令行中登陆 npm 账号
+8. `npm run start` 开始你的开发之旅吧
 
 
