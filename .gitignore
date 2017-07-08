@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+dist/
+npm-debug.log
+config/index.js
+yarn-error.log
+src/pages/*
+src/modules/*
+!src/pages/.gitkeep
+!src/modules/.gitkeep

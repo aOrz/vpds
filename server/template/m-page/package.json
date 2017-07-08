@@ -1,0 +1,12 @@
+{
+  "name": "page",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "screenShot": "http://on3c42yt0.bkt.clouddn.com/timg.jpg",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

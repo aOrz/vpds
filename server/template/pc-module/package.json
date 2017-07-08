@@ -1,0 +1,15 @@
+{
+  "name": "name",
+  "version": "0.1.0",
+  "description": "vue components",
+  "keywords": "",
+  "main": "main.js",
+  "screenShot": "http://on3c42yt0.bkt.clouddn.com/timg.jpg",
+  "vue-version": "2",
+  "lego-platform": "module,mobie",
+  "author": "anonymous",
+  "license": "ISC",
+  "dependencies": {
+    "vue": "^2.0.3"
+  }
+}
