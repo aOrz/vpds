@@ -1,6 +1,6 @@
 {
   "name": "lego",
-  "description": "乐高网站搭建",
+  "description": "vue 模块化开发脚手架",
   "author": " rememberwz@gmail.com",
   "private": true,
   "scripts": {
