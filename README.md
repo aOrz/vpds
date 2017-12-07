@@ -17,5 +17,8 @@
 7. 安装 Sinopia npm 私有仓库，或者直接使用 npmjs.org，在命令行中登陆 npm 账号
 8. `npm run start` 开始你的开发之旅吧
 
+## 分享交流
 
-![演示 gif](http://minikb.fddcn.cn/QQ20170708-231701-HD.gif)
+打赏|加小助手进微信群
+:---:|:---:
+<img src="https://fddcn.cn/wp-content/uploads/2017/12/WechatIMG117.jpeg" width="200"/>  |  <img src="https://fddcn.cn/wp-content/uploads/2017/12/WechatIMG116.jpeg" width="200"/>
