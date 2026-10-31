@@ -33,9 +33,6 @@ module.exports = {
     assetsSubDirectory: 'assets',
     assetsPublicPath: './',
     productionSourceMap: true,
-    productionGzip: false,
-    productionGzipExtensions: ['js', 'css'],
-    bundleAnalyzerReport: process.env.npm_config_report,
     dev_path: dev_path
   },
   dev: {

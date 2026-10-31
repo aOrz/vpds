@@ -1,5 +1,3 @@
-// require('./check-versions')()
-
 var config = require('../config')
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = JSON.parse(config.dev.env.NODE_ENV)
@@ -9,7 +7,8 @@ var opn = require('opn')
 var path = require('path')
 var express = require('express')
 var webpack = require('webpack')
-var proxyMiddleware = require('http-proxy-middleware')
+var createProxyMiddleware = require('http-proxy-middleware').createProxyMiddleware
+var HtmlWebpackPlugin = require('html-webpack-plugin')
 var webpackConfig = require('./webpack.dev.conf')
 
 // default port where dev server listens for incoming traffic
@@ -47,10 +46,10 @@ var hotMiddleware = require('webpack-hot-middleware')(compiler, {
   log: () => {}
 })
 // force page reload when html-webpack-plugin template changes
-compiler.plugin('compilation', function (compilation) {
-  compilation.plugin('html-webpack-plugin-after-emit', function (data, cb) {
+compiler.hooks.compilation.tap('VpdsHtmlReload', function (compilation) {
+  HtmlWebpackPlugin.getHooks(compilation).afterEmit.tap('VpdsHtmlReload', function (data) {
     hotMiddleware.publish({ action: 'reload' })
-    cb()
+    return data
   })
 })
 
@@ -60,7 +59,9 @@ Object.keys(proxyTable).forEach(function (context) {
   if (typeof options === 'string') {
     options = { target: options }
   }
-  app.use(proxyMiddleware(options.filter || context, options))
+  var proxyOptions = Object.assign({}, options, { pathFilter: options.pathFilter || options.filter || context })
+  delete proxyOptions.filter
+  app.use(createProxyMiddleware(proxyOptions))
 })
 
 // handle fallback for HTML5 history API
@@ -83,7 +84,7 @@ devMiddleware.waitUntilValid(function () {
   console.log('> Listening at ' + uri + '\n')
 })
 
-module.exports = app.listen(port, '127.0.0.1', function (err) {
+var server = app.listen(port, '127.0.0.1', function (err) {
   if (err) {
     console.log(err)
     return
@@ -94,3 +95,10 @@ module.exports = app.listen(port, '127.0.0.1', function (err) {
     opn(uri);
   }
 })
+
+// Dispose file watchers and HMR heartbeat when the server is stopped in-process.
+server.on('close', function () {
+  hotMiddleware.close()
+  devMiddleware.close(function () { compiler.close(function () {}) })
+})
+module.exports = server

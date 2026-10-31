@@ -1,36 +1,23 @@
-var utils = require('./utils')
-var webpack = require('webpack')
-    let dev_path = process.env.dev_path || '';
-var config = require('../config')
-var merge = require('webpack-merge')
-var baseWebpackConfig = require('./webpack.base.conf')
-var HtmlWebpackPlugin = require('html-webpack-plugin')
-var FriendlyErrorsPlugin = require('friendly-errors-webpack-plugin')
-
-// add hot-reload related code to entry chunks
-Object.keys(baseWebpackConfig.entry).forEach(function (name) {
-  baseWebpackConfig.entry[name] = [__dirname + '/dev-client'].concat(baseWebpackConfig.entry[name])
-})
+const path = require('path')
+const webpack = require('webpack')
+const { merge } = require('webpack-merge')
+const HtmlWebpackPlugin = require('html-webpack-plugin')
+const config = require('../config')
+const utils = require('./utils')
+const baseWebpackConfig = require('./webpack.base.conf')
 
 module.exports = merge(baseWebpackConfig, {
-  module: {
-    rules: utils.styleLoaders({ sourceMap: config.dev.cssSourceMap })
-  },
-  // cheap-module-eval-source-map is faster for development
-  devtool: '#cheap-module-eval-source-map',
+  mode: 'development',
+  entry: { app: [path.join(__dirname, 'dev-client.js'), baseWebpackConfig.entry.app] },
+  module: { rules: utils.styleLoaders({ sourceMap: config.dev.cssSourceMap }) },
+  devtool: 'eval-cheap-module-source-map',
+  optimization: { emitOnErrors: false },
   plugins: [
-    new webpack.DefinePlugin({
-      'process.env': config.dev.env
-    }),
-    // https://github.com/glenjamin/webpack-hot-middleware#installation--usage
     new webpack.HotModuleReplacementPlugin(),
-    new webpack.NoEmitOnErrorsPlugin(),
-    // https://github.com/ampedandwired/html-webpack-plugin
     new HtmlWebpackPlugin({
       filename: 'index.html',
-      template: config.dev.dev_path + '/index.html',
+      template: path.join(config.dev.dev_path, 'index.html'),
       inject: true
-    }),
-    new FriendlyErrorsPlugin()
+    })
   ]
 })

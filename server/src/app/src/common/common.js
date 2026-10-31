@@ -1,21 +1,17 @@
+import http from './http.js'
+
 export default {
-  get (that, url) {
-    that.$http.get(url)
-    .then(res => {
-      if (res.status == 200 && res.body.status == 0) {
-        that.$message({
-          message: '成功',
-          type: 'success'
-        });
-      } else {
-        that.$message({
-          message: res.body.stderr || res.statusText,
-          type: 'error'
-        });
+  async get(that, url, message = '成功') {
+    try {
+      const response = await http.get(url)
+      if (Number(response.body.status) !== 0) {
+        throw new Error(response.body.stderr || response.statusText || '操作失败')
       }
-    })
-    .catch( e => {
-      console.log(e);
-    })
+      that.$message({ message, type: 'success' })
+      return true
+    } catch (error) {
+      that.$message({ message: error.message || '请求失败', type: 'error' })
+      return false
+    }
   }
 }

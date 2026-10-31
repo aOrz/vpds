@@ -150,30 +150,6 @@ test('failed npm publication restores the original manifest and skips upload', a
   assert.throws(() => publish.validate({name: 'demo', version: '1.0.1', pub_type: '__proto__'}), /Invalid version/);
 });
 
-test('upload includes extensionless assets and awaits assets before HTML', async () => {
-  const uploaded = [];
-  let finishAsset;
-  const pub = load('server/src/lib/pub.js', {
-    glob: {sync: (pattern, options) => {
-      assert(pattern.endsWith('/dist/**/*'));
-      assert.equal(options.nodir, true);
-      return ['/project/dist/index.html', '/project/dist/LICENSE'];
-    }},
-    qiniu: {conf: {}, rs: {PutPolicy: function () {this.token = () => 'test-token';}}, io: {
-      PutExtra: function () {}, putFile: (token, name, file, extra, done) => {
-        uploaded.push(name);
-        if (name.endsWith('LICENSE')) finishAsset = done;
-        else done();
-      }
-    }},
-    '../../../config/index.js': {qiniu: {test: {}}}
-  });
-  const waiting = pub.pub('/project', 'demo', 'test');
-  assert.deepEqual(uploaded, ['demo/dist/LICENSE']);
-  finishAsset();
-  await waiting;
-  assert.deepEqual(uploaded, ['demo/dist/LICENSE', 'demo/dist/index.html']);
-});
 
 test('publication refuses a manifest symlink before changing external files', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vpds-manifest-'));

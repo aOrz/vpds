@@ -22,7 +22,7 @@ function runBuild(hasErrors, validate) {
   const process = { env: {}, stdout: { write: value => calls.push(value) } };
   const dependencies = {
     ora: () => ({ start() {}, stop() {} }),
-    rimraf: (target, cb) => { calls.push('remove'); cb(null); },
+    fs: {rm: (target, options, cb) => { assert.equal(options.recursive, true); assert.equal(options.force, true); calls.push('remove'); cb(null); }},
     path,
     chalk: { cyan: value => value, yellow: value => value, red: value => value },
     webpack: (config, cb) => cb(null, { toString: () => 'stats', hasErrors: () => hasErrors }),
@@ -93,6 +93,8 @@ test('babel entry and alias target selected project rather than nonexistent serv
       if (name === 'path') return path;
       if (name === '../config') return { requireProjectPath: () => project, build: { assetsRoot: '/tmp/example-project/dist' }, dev: {} };
       if (name === './utils') return { assetsPath: value => value };
+      if (name === 'webpack') return { DefinePlugin: class DefinePlugin {} };
+      if (name === 'vue-loader') return { VueLoaderPlugin: class VueLoaderPlugin {} };
       return {};
     }
   };
@@ -118,11 +120,13 @@ test('build removes the whole output tree before writing HTML, without following
     const config = loadConfig({ dev_path: root });
     const dependencies = {
       ora: () => ({ start() {}, stop() {} }),
-      rimraf: (target, cb) => {
+      fs: {rm: (target, options, cb) => {
         assert.equal(target, output, 'cleanup must include stale HTML, not only assets');
-        fs.rmSync(target, { recursive: true, force: true });
+        assert.equal(options.recursive, true);
+        assert.equal(options.force, true);
+        fs.rmSync(target, options);
         cb(null);
-      },
+      }},
       chalk: { cyan: value => value, yellow: value => value, red: value => value },
       webpack: (options, cb) => {
         assert.ok(!fs.existsSync(output), 'output is removed before webpack runs');

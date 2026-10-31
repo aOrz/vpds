@@ -1,8 +1,8 @@
 <template>
-  <div id="app">
+  <div class="vpds-app">
     <el-row class="tac">
       <el-col :span="12">
-        <el-menu theme="dark" :gutter="20" :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect">
+        <el-menu background-color="#324157" text-color="#fff" active-text-color="#409eff" :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect">
           <el-menu-item index="module">模块</el-menu-item>
           <el-menu-item index="page">页面</el-menu-item>
         </el-menu>
@@ -13,134 +13,101 @@
       <el-col :span="10">
         <div class="search">
           <el-input placeholder="请输入内容" v-model="searchInput" @input="search">
-            <el-button slot="append" icon="search" @click="search"></el-button>
+            <template #append><el-button @click="search">搜索</el-button></template>
           </el-input>
         </div>
       </el-col>
     </el-row>
-    <el-row>
-      <v-card v-on:search="search()" :active-index="activeIndex" :modules="modules"></v-card>
-    </el-row>
-    <el-dialog :title="dialog.title" v-model="dialog.show">
-      <el-form :model="dialog">
-          <div>
-              <el-form-item  v-for="label in dialog.label" :label="label.name" :key="label.name" label-width="120px">
-                  <el-input  v-if="!label.type" v-model="label.data" auto-complete="off"></el-input>
-                  <el-select v-if="label.type === 'select'"  v-model="label.data" placeholder="请选择">
-                    <el-option
-                      v-for="item in label.options"
-                      v-if="item"
-                      :key="item"
-                      :label="item"
-                      :value="item">
-                    </el-option>
-                  </el-select>
-               </el-form-item>
-            </div>
+    <v-card :key="activeIndex" @search="search" :active-index="activeIndex" :modules="modules" />
+    <el-dialog title="新建" v-model="dialog.show" :close-on-click-modal="!dialog.busy" :close-on-press-escape="!dialog.busy" :show-close="!dialog.busy">
+      <el-form :model="dialog" @submit.prevent="submitCreate">
+        <el-form-item label="名称" label-width="120px">
+          <el-input v-model="dialog.name" autocomplete="off" :disabled="dialog.busy" />
+        </el-form-item>
+        <el-form-item label="模板" label-width="120px">
+          <el-select v-model="dialog.template" placeholder="请选择" :loading="dialog.loading" :disabled="dialog.busy">
+            <el-option v-for="item in dialog.templates" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
       </el-form>
-      <div slot="footer" class="dialog-footer">
-        <el-button @click="dialog.show = false">取 消</el-button>
-        <el-button type="primary" @click="callBack(dialog.functionName, dialog.parmas)">确 定</el-button>
-      </div>
+      <template #footer>
+        <el-button :disabled="dialog.busy" @click="dialog.show = false">取 消</el-button>
+        <el-button type="primary" :loading="dialog.busy" :disabled="dialog.loading || !dialog.name.trim() || !dialog.template" @click="submitCreate">确 定</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
 
 <script>
-import cardComponent from './components/card.vue';
-import vueResource from 'vue-resource';
-import Vue from 'vue';
-import common from './common/common.js';
-
-Vue.use(vueResource);
-// Required for local mutation APIs; cross-origin pages cannot send this header.
-Vue.http.headers.common['X-VPDS-Request'] = '1';
+import cardComponent from './components/card.vue'
+import http from './common/http.js'
+import common from './common/common.js'
 
 export default {
-  data () {
+  components: { 'v-card': cardComponent },
+  data() {
     return {
       activeIndex: 'module',
       searchInput: '',
       modules: [],
-      dialog: {
-        title: '新建',
-        show: false,
-        functionName: '',
-        parmas: {},
-        label: [{
-                  name: '名称',
-                  data: ''
-                }]
-      }
+      searchSequence: 0,
+      templateSequence: 0,
+      dialog: { show: false, name: '', template: '', templates: [], loading: false, busy: false, kind: 'module' }
     }
   },
   methods: {
-    callBack (functionName, data) {
-      this[functionName](data);
-    },
-    createNew () {
-      if (this.dialog.show == false) {
-        this.dialog.show = true;
-        this.dialog.functionName = 'createNew';
-        this.$http.get('/api/getTemplate')
-        .then(res => {
-           let stdout  = res.body.stdout
-           let arr = stdout.split('\n');
-           if (this.dialog.label.length == 1) {
-              this.dialog.label.push({
-               name: '模板',
-               type: 'select',
-               data: '',
-               options: arr
-              })
-           };
-        })
-        .catch( e => {
-        this.$message({
-          message: '请求失败',
-          type: 'error'
-        });
-      })
-      } else {
-        this.dialog.show = false;
-        common.get(this, `/api/${this.activeIndex}/create/${this.dialog.label[0].data}/${this.dialog.label[1].data}`);
+    async createNew() {
+      if (this.dialog.busy) return
+      const sequence = ++this.templateSequence
+      this.dialog = { show: true, name: '', template: '', templates: [], loading: true, busy: false, kind: this.activeIndex }
+      try {
+        const response = await http.get('/api/getTemplate')
+        if (Number(response.body.status) !== 0) throw new Error(response.body.stderr || '模板读取失败')
+        if (sequence !== this.templateSequence) return
+        this.dialog.templates = String(response.body.stdout || '').split('\n').map(item => item.trim()).filter(Boolean)
+      } catch (error) {
+        if (sequence === this.templateSequence) this.$message({ message: error.message || '请求失败', type: 'error' })
+      } finally {
+        if (sequence === this.templateSequence) this.dialog.loading = false
       }
-      this.search();
     },
-    handleSelect(key, keyPath) {
-      this.activeIndex = key;
-      this.search();
-    },
-    search () {
-      let that = this;
-      let url = `/api/${this.activeIndex}/local/all`;
-      if (this.searchInput) {
-        url = `/api/${this.activeIndex}/search/` + this.searchInput
+    async submitCreate() {
+      if (this.dialog.busy || this.dialog.loading || !this.dialog.name.trim() || !this.dialog.template) return
+      this.dialog.busy = true
+      try {
+        const success = await common.get(this, `/api/${this.dialog.kind}/create/${encodeURIComponent(this.dialog.name.trim())}/${encodeURIComponent(this.dialog.template)}`, '创建成功')
+        if (success) {
+          this.dialog.show = false
+          await this.search()
+        }
+      } finally {
+        this.dialog.busy = false
       }
-      this.$http.get(url)
-      .then(res => {
-        let rows = res.body.data.rows;
-        rows.sort((a,b) => {
-          let ac = a.createTime || 0;
-          let bc = b.createTime || 0;
-          return bc - ac;
-        });
-        that.modules = rows;
-      })
-      .catch( e => {
-        this.$message({
-          message: '请求失败',
-          type: 'error'
-        });
-      })
+    },
+    handleSelect(key) {
+      this.activeIndex = key
+      this.modules = []
+      this.search()
+    },
+    async search() {
+      const sequence = ++this.searchSequence
+      const url = this.searchInput
+        ? `/api/${this.activeIndex}/search/${encodeURIComponent(this.searchInput)}`
+        : `/api/${this.activeIndex}/local/all`
+      try {
+        const response = await http.get(url)
+        if (Number(response.body.status) !== 0) throw new Error(response.body.stderr || '查询失败')
+        if (sequence !== this.searchSequence) return
+        this.modules = response.body.data.rows.slice().sort((a, b) => (b.createTime || 0) - (a.createTime || 0))
+      } catch (error) {
+        if (sequence === this.searchSequence) this.$message({ message: error.message || '请求失败', type: 'error' })
+      }
     }
   },
-  mounted () {
-    let that = this;
-    this.search();
-  },
-  components: {
-    'v-card': cardComponent
+  mounted() { this.search() },
+  beforeUnmount() {
+    ++this.searchSequence
+    ++this.templateSequence
   }
 }
 </script>

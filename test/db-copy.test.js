@@ -86,7 +86,8 @@ test('search values are parameterized for both package kinds', async () => {
       assert.deepEqual(values, ['%' + str + '%']);
       return [];
     }},
-    glob: {sync: () => []},
+    '../lib/localProjects.js': {list: async () => []},
+    '../lib/validation.js': {within: (root, name) => path.join(root, name)},
     '../../config/index.js': {srcPath: '/unused'}
   });
   await search.searchModule(str);

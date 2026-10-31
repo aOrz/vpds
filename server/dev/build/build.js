@@ -3,7 +3,7 @@
 process.env.NODE_ENV = 'production'
 
 var ora = require('ora')
-var rm = require('rimraf')
+var fs = require('fs')
 var chalk = require('chalk')
 var webpack = require('webpack')
 var config = require('../config')
@@ -14,7 +14,7 @@ var spinner = ora('building for production...')
 spinner.start()
 
 // Remove the complete validated output tree, including stale HTML and symlinks.
-rm(config.build.assetsRoot, err => {
+fs.rm(config.build.assetsRoot, { recursive: true, force: true }, err => {
   if (err) throw err
   webpack(webpackConfig, function (err, stats) {
     spinner.stop()
