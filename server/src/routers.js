@@ -1,136 +1,97 @@
 const Router = require('koa-router');
-const router = new Router();
-const shell = require('shelljs');
-const child_process = require('child_process');
-const init = require('./modules/init.js');
-const u = require('./lib/utils.js');
-const config = require('../config/index.js');
 const path = require('path');
+const config = require('../config/index.js');
+const validation = require('./lib/validation.js');
+const u = require('./lib/utils.js');
 const install = require('./modules/install.js');
-
-router.get('/api/module/install/:name', async function (ctx) {
-  let o = await install.installModule(ctx.params.name);
-  ctx.body = u.parseOut(o);
-});
-
-router.get('/api/page/install/:name', async function (ctx) {
-  let o = await install.installPage(ctx.params.name);
-  ctx.body = u.parseOut(o);
-});
-
 const info = require('./modules/getInfo.js');
-
-router.get('/api/module/local/all', async function (ctx) {
-  let o = await info.getLocalModulesInfo();
-  ctx.body = {status: 0,
-    data:{
-      rows: o}};
-})
-router.get('/api/page/local/all', async function (ctx) {
-  let o = await info.getLocalPagesInfo();
-  ctx.body = {status: 0,
-    data:{
-      rows: o}};
-})
-
 const search = require('./modules/search.js');
-
-router.get('/api/module/search/:str', async function (ctx) {
-  let o = await search.searchModule(ctx.params.str)
-  ctx.body = JSON.stringify(o);
-})
-router.get('/api/page/search/:str', async function (ctx) {
-  let o = await search.searchPage(ctx.params.str)
-  ctx.body = JSON.stringify(o);
-})
-
 const cp = require('./modules/cp.js');
-
-router.get('/api/module/copy/:fromname/:toname', async function (ctx) {
-  let o = await cp.cpModule(ctx.params.fromname, ctx.params.toname, path.resolve(config.srcPath, 'modules/'));
-  ctx.body = u.parseOut(o);
-});
-router.get('/api/page/copy/:fromname/:toname', async function (ctx) {
-  let o = await cp.cpPage(ctx.params.fromname, ctx.params.toname, path.resolve(config.srcPath, 'pages/'));
-  ctx.body = u.parseOut(o);
-});
-
-router.get('/api/module/create/:name/:template', async function (ctx) {
-  let params = ctx.params;
-  let o = await cp.cpModule(params.template, params, path.resolve(config.serverPath, 'template'));
-  ctx.body = u.parseOut(o);
-});
-router.get('/api/page/create/:name/:template', async function (ctx) {
-  let params = ctx.params;
-  let o = await cp.cpPage(params.template, params, path.resolve(config.serverPath, 'template'));
-  ctx.body = u.parseOut(o);
-});
-
 const publish = require('./modules/publish.js');
 const build = require('./modules/build.js');
 const mysql = require('./modules/mysql.js');
-router.get('/api/module/publish/:name/:version/:pub_type', async function (ctx) {
-  let params = ctx.params;
-  process.env.dev_path = config.srcPath + '/modules/' + params.name
-  shell.cd(process.env.dev_path);
-  await build.buildModule(params.name);
-  let o = await publish.publishModule(params);
-  if (o.code === 0) {
-    mysql.save('module', params.name).catch(e => {
-      console.log(e);
-    });
-  }
-  ctx.body = u.parseOut(o);
-});
-router.get('/api/page/publish/:name/:version/:pub_type', async function (ctx) {
-  let params = ctx.params;
-  process.env.dev_path = config.srcPath + '/pages/' + params.name
-  shell.cd(process.env.dev_path);
-  await build.buildPage(params.name);
-  let o = await publish.publishPage(params);
-  if (o.code === 0) {
-    mysql.save('page', params.name).catch(e => {
-      console.log(e);
-    });
-  }
-  ctx.body = u.parseOut(o);
-});
-
-router.get('/api/module/build/:name',async function (ctx) {
-  process.env.dev_path = config.srcPath + '/modules/' + ctx.params.name;
-  let o = build.buildModule(ctx.params.name);
-  ctx.body = u.parseOut(o);
-});
-router.get('/api/page/build/:name',async function (ctx) {
-  process.env.dev_path = config.srcPath + '/pages/' + ctx.params.name;
-  let o = build.buildPage(ctx.params.name);
-  ctx.body = u.parseOut(o);
-});
-let dev = require('./modules/dev.js');
-router.get('/api/module/dev/:name', function (ctx) {
-  let {name} = ctx.params;
-  dev('module', name);
-  ctx.body = JSON.stringify({status:'0'});
-});
-
-router.get('/api/page/dev/:name', function (ctx) {
-  let {name} = ctx.params;
-  dev('page', name);
-  ctx.body = JSON.stringify({status:'0'});
-});
+const dev = require('./modules/dev.js');
 const template = require('./modules/getTemplate.js');
- router.get('/api/getTemplate',async function (ctx) {
-    let arr = await template.getTemplate();
-    ctx.body = u.parseOut(arr);
-});
 const getConfig = require('./modules/getConfig.js');
- router.get('/api/getConfig',async function (ctx) {
-    let obj = getConfig();
-    ctx.body = {
-      code: 0,
-      data: obj
-      };
+const router = new Router();
+const operations = new Map();
+
+// Requests for different projects may run concurrently, but two mutations of
+// the same project's output/manifest must not overlap.
+async function withProject(kind, name, action) {
+  const key = kind + ':' + name;
+  const previous = operations.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(action);
+  operations.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (operations.get(key) === current) operations.delete(key);
+  }
+}
+
+function route(url, handler) {
+  router.get(url, async ctx => {
+    try {
+      ['name', 'fromname', 'toname', 'template'].forEach(key => {
+        if (ctx.params[key] !== undefined) validation.packageName(ctx.params[key]);
+      });
+      await handler(ctx);
+    } catch (error) {
+      ctx.status = error.status || 500;
+      // Do not serialize database credentials, queries, paths or raw errors.
+      ctx.body = {status: 1, stderr: ctx.status === 400 ? error.message : 'Operation failed; check the server logs'};
+      if (ctx.status !== 400) console.error('VPDS operation failed:', error.code || error.name || 'Error');
+    }
+  });
+}
+
+['module', 'page'].forEach(kind => {
+  const title = kind === 'module' ? 'Module' : 'Page';
+  route(`/api/${kind}/install/:name`, async ctx => {
+    ctx.body = u.parseOut(await withProject(kind, ctx.params.name, () => install['install' + title](ctx.params.name)));
+  });
+  route(`/api/${kind}/local/all`, async ctx => {
+    ctx.body = {status: 0, data: {rows: await info['getLocal' + title + 'sInfo']()}};
+  });
+  route(`/api/${kind}/search/:str`, async ctx => {
+    ctx.body = await search['search' + title](ctx.params.str);
+  });
+  route(`/api/${kind}/copy/:fromname/:toname`, async ctx => {
+    const params = ctx.params;
+    ctx.body = u.parseOut(await withProject(kind, params.toname, () =>
+      cp['cp' + title](params.fromname, params.toname, path.join(config.srcPath, kind + 's'))));
+  });
+  route(`/api/${kind}/create/:name/:template`, async ctx => {
+    const params = ctx.params;
+    ctx.body = u.parseOut(await withProject(kind, params.name, () =>
+      cp['cp' + title](params.template, params, path.join(config.serverPath, 'template'))));
+  });
+  route(`/api/${kind}/publish/:name/:version/:pub_type`, async ctx => {
+    const params = ctx.params;
+    publish.validate(params);
+    const result = await withProject(kind, params.name, async () => {
+      const built = await build['build' + title](params.name);
+      if (built.code !== 0) return built;
+      const published = await publish['publish' + title](params);
+      if (published.code === 0) await mysql.save(kind, params.name);
+      return published;
+    });
+    ctx.body = u.parseOut(result);
+  });
+  route(`/api/${kind}/build/:name`, async ctx => {
+    ctx.body = u.parseOut(await withProject(kind, ctx.params.name, () => build['build' + title](ctx.params.name)));
+  });
+  route(`/api/${kind}/dev/:name`, async ctx => {
+    ctx.body = u.parseOut(await dev(kind, ctx.params.name));
+  });
 });
-module.exports = function () {
-  return router;
-};
+
+route('/api/getTemplate', async ctx => {
+  ctx.body = u.parseOut(await template.getTemplate());
+});
+route('/api/getConfig', async ctx => {
+  ctx.body = {code: 0, data: getConfig()};
+});
+
+module.exports = () => router;

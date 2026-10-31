@@ -1,62 +1,32 @@
-var glob = require('glob');
-var chalk = require('chalk');
-var qiniu = require("qiniu");
-var path = require('path');
-var shell = require('shelljs');
-var qiniuConf = require('../../../config/index.js').qiniu;
+const glob = require('glob');
+const qiniu = require('qiniu');
+const path = require('path');
+const qiniuConf = require('../../../config/index.js').qiniu;
 
-function upploadQiniu(file, name, config) {
-  //需要填写你的 Access Key 和 Secret Key
+function uploadQiniu(file, name, config) {
   qiniu.conf.ACCESS_KEY = config.ak;
   qiniu.conf.SECRET_KEY = config.sk;
-  //要上传的空间
-  bucket = config.bucketName;
-  //上传到七牛后保存的文件名
-  key = name;
-  function uptoken(bucket, key) {
-  var putPolicy = new qiniu.rs.PutPolicy(bucket+":"+key);
-  return putPolicy.token();
-}
-//生成上传 Token
-token = uptoken(bucket, key);
-//要上传文件的本地路径
-filePath = file;
-//构造上传函数
-
-//调用uploadFile上传
-  return new Promise(function (resolve, reject) {
-    var extra = new qiniu.io.PutExtra();
-      qiniu.io.putFile(token, key, filePath, extra, function(err, ret) {
-        if(!err) {
-          // 上传成功， 处理返回值
-          console.log(chalk.green(name + '  success! \n'), new Date().getTime());
-          resolve({code: 0, status: 'success'});
-        } else {
-          // 上传失败， 处理返回代码
-          console.log(chalk.red(name + 'error'));
-          reject({code: 1, status: name + 'error'})
-        }
+  const policy = new qiniu.rs.PutPolicy(config.bucketName + ':' + name);
+  const token = policy.token();
+  return new Promise((resolve, reject) => {
+    qiniu.io.putFile(token, name, file, new qiniu.io.PutExtra(), error => {
+      if (error) return reject(new Error('Upload failed: ' + name));
+      resolve({code: 0, status: 'success'});
     });
-  })
+  });
 }
 
-function pub(path, name, pub_type) {
-  var files = glob.sync(path + '/dist/**/*.*', {
-    ignore: '**/*.html',
-    dot: true
-  });
-  let p = [];
-  for (var i = files.length - 1; i >= 0; i--) {
-    p.push(upploadQiniu(files[i], name + files[i].replace(/\.\//, '').replace(path, ''), qiniuConf[pub_type]));
+async function pub(project, name, environment) {
+  if (!Object.prototype.hasOwnProperty.call(qiniuConf, environment)) {
+    throw new Error('Invalid publishing environment');
   }
-  return Promise.all(p).then(() => {
-    let html = [];
-    let htmls = glob.sync(path + '/dist/**/*.html');
-    for (var i = htmls.length - 1; i >= 0; i--) {
-      html.push(upploadQiniu(htmls[i], name + htmls[i].replace(/\.\//, '').replace(path, ''), qiniuConf[pub_type]));
-    }
-    console.log('页面发布完成')
-    return Promise.all(html);
-  })
+  // Include extensionless assets, and publish HTML only after every asset exists.
+  const files = glob.sync(path.join(project, 'dist/**/*'), {dot: true, nodir: true});
+  if (!files.length) throw new Error('No build output to publish');
+  const upload = file => uploadQiniu(file, name + '/' + path.relative(project, file).split(path.sep).join('/'), qiniuConf[environment]);
+  await Promise.all(files.filter(file => !/\.html$/i.test(file)).map(upload));
+  await Promise.all(files.filter(file => /\.html$/i.test(file)).map(upload));
+  return {code: 0};
 }
+
 module.exports = {pub};

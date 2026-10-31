@@ -53,6 +53,8 @@ import Vue from 'vue';
 import common from './common/common.js';
 
 Vue.use(vueResource);
+// Required for local mutation APIs; cross-origin pages cannot send this header.
+Vue.http.headers.common['X-VPDS-Request'] = '1';
 
 export default {
   data () {
@@ -121,7 +123,7 @@ export default {
         rows.sort((a,b) => {
           let ac = a.createTime || 0;
           let bc = b.createTime || 0;
-          return ac < bc;
+          return bc - ac;
         });
         that.modules = rows;
       })

@@ -4,7 +4,7 @@ const config = require('../../config/index.js');
 const path = require('path');
 
 async function searchModule (str) {
-  let rows = await mysql.gets('module', `\`package_string\` like '%${str}%'`);
+  let rows = await mysql.gets('module', '`package_string` like ?', ['%' + str + '%']);
   let modules = glob.sync('/*', {
     root: path.resolve(config.srcPath, 'modules')
   });
@@ -31,14 +31,13 @@ async function searchModule (str) {
   return o;
 }
 async function searchPage (str) {
-  let rows = await mysql.gets('page', `\`package_string\` like '%${str}%'`);
+  let rows = await mysql.gets('page', '`package_string` like ?', ['%' + str + '%']);
   let modules = glob.sync('/*', {
     root: path.resolve(config.srcPath, 'pages')
   });
   modules = modules.map((item) => {
     return item.replace(path.resolve(config.srcPath, 'pages') + '/', '');
   });
-  console.log(modules)
   for(let i = 0; i < rows.length; i++) {
     let row = JSON.parse(decodeURIComponent(rows[i].package_string));
     if (modules.indexOf(row.name) > -1) {
