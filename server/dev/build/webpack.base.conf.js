@@ -1,17 +1,12 @@
-var path = require('path')
-var utils = require('./utils')
-var config = require('../config')
-var vueLoaderConfig = require('./vue-loader.conf')
-var projectPath = config.requireProjectPath()
-
-function resolve (dir) {
-  return path.join(__dirname, '..', dir)
-}
+const path = require('path')
+const webpack = require('webpack')
+const { VueLoaderPlugin } = require('vue-loader')
+const config = require('../config')
+const projectPath = config.requireProjectPath()
 
 module.exports = {
-  entry: {
-    app: path.join(projectPath, 'index.js')
-  },
+  context: projectPath,
+  entry: { app: path.join(projectPath, 'index.js') },
   output: {
     path: config.build.assetsRoot,
     filename: '[name].js',
@@ -22,48 +17,43 @@ module.exports = {
   resolve: {
     extensions: ['.js', '.vue', '.json'],
     alias: {
-      'vue$': 'vue/dist/vue.esm.js',
-      '@': projectPath,
+      'vue$': 'vue/dist/vue.esm-bundler.js',
+      '@': projectPath
     }
   },
   module: {
     rules: [
+      { test: /\.vue$/, loader: 'vue-loader' },
       {
-        test: /\.(js|vue)$/,
-        loader: 'eslint-loader',
-        enforce: "pre",
-        include: [resolve('src'), resolve('test')],
-        options: {
-          formatter: require('eslint-friendly-formatter')
-        }
-      },
-      {
-        test: /\.vue$/,
-        loader: 'vue-loader',
-        options: vueLoaderConfig
-      },
-      {
-        test: /\.js$/,
+        test: /\.m?js$/,
         loader: 'babel-loader',
         include: [projectPath],
-        exclude: /node_modules/
-      },
-      {
-        test: /\.(png|jpe?g|gif|svg)(\?.*)?$/,
-        loader: 'url-loader',
-        query: {
-          limit: 10000,
-          name: utils.assetsPath('img/[name].[hash:7].[ext]')
+        exclude: /node_modules/,
+        options: {
+          // Use the project's Babel 7 configuration, never the legacy Babel 6 defaults.
+          presets: [['@babel/preset-env', { modules: false }]]
         }
       },
       {
-        test: /\.(woff2?|eot|ttf|otf)(\?.*)?$/,
-        loader: 'url-loader',
-        query: {
-          limit: 10000,
-          name: utils.assetsPath('fonts/[name].[hash:7].[ext]')
-        }
+        test: /\.(png|jpe?g|gif|svg|webp)$/i,
+        type: 'asset',
+        parser: { dataUrlCondition: { maxSize: 10000 } },
+        generator: { filename: 'assets/img/[name].[contenthash:8][ext]' }
+      },
+      {
+        test: /\.(woff2?|eot|ttf|otf)$/i,
+        type: 'asset',
+        parser: { dataUrlCondition: { maxSize: 10000 } },
+        generator: { filename: 'assets/fonts/[name].[contenthash:8][ext]' }
       }
     ]
-  }
+  },
+  plugins: [
+    new VueLoaderPlugin(),
+    new webpack.DefinePlugin({
+      __VUE_OPTIONS_API__: true,
+      __VUE_PROD_DEVTOOLS__: false,
+      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false
+    })
+  ]
 }

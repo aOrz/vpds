@@ -1,64 +1,21 @@
 const mysql = require('./mysql.js');
-const glob = require('glob');
 const config = require('../../config/index.js');
-const path = require('path');
+const validation = require('../lib/validation.js');
+const projects = require('../lib/localProjects.js');
 
-async function searchModule (str) {
-  let rows = await mysql.gets('module', '`package_string` like ?', ['%' + str + '%']);
-  let modules = glob.sync('/*', {
-    root: path.resolve(config.srcPath, 'modules')
+async function search(kind, str) {
+  const records = await mysql.gets(kind, '`package_string` like ?', ['%' + str + '%']);
+  const root = validation.within(config.srcPath, kind + 's');
+  const localNames = new Set((await projects.list(root)).map(project => project.name));
+  const rows = records.map(record => {
+    const item = JSON.parse(decodeURIComponent(record.package_string));
+    item.local = localNames.has(item.name);
+    return item;
   });
-  modules = modules.map((item) => {
-    return item.replace(path.resolve(config.srcPath, 'modules') + '/', '');
-  })
-  for(let i = 0; i < rows.length; i++) {
-    let row = JSON.parse(decodeURIComponent(rows[i].package_string));
-    if (modules.indexOf(row.name) > -1) {
-      row.local = true;
-    } else {
-      row.local = false;
-    }
-    rows[i] = row;
-  }
-  let o = {
-    status: 0,
-    body: rows,
-    data: {
-      rows
-    }
-  }
-
-  return o;
+  return {status: 0, body: rows, data: {rows}};
 }
-async function searchPage (str) {
-  let rows = await mysql.gets('page', '`package_string` like ?', ['%' + str + '%']);
-  let modules = glob.sync('/*', {
-    root: path.resolve(config.srcPath, 'pages')
-  });
-  modules = modules.map((item) => {
-    return item.replace(path.resolve(config.srcPath, 'pages') + '/', '');
-  });
-  for(let i = 0; i < rows.length; i++) {
-    let row = JSON.parse(decodeURIComponent(rows[i].package_string));
-    if (modules.indexOf(row.name) > -1) {
-      row.local = true;
-    } else {
-      row.local = false;
-    }
-    rows[i] = row;
-  }
 
-  let o = {
-    status: 0,
-    body: rows,
-    data: {
-      rows
-    }
-  }
-
-  return o;
-}
 module.exports = {
-  searchModule,
-  searchPage
-}
+  searchModule: str => search('module', str),
+  searchPage: str => search('page', str)
+};
