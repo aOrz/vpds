@@ -51,7 +51,6 @@
             </el-select>
           </el-form-item>
         </div>
-        </el-select>
       </el-form>
       <div slot="footer" class="dialog-footer">
         <el-button @click="dialog.show = false">取 消</el-button>
@@ -216,32 +215,32 @@ export default {
 }
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
   .el-col {
     margin: 10px 4.166665%;
-    .description {
-      overflow: hidden;
-      height: 20px;
-    }
-    .info {
-      color: #bfcbd9;
-      .name {
-        float: left;
-      }
-      .author {
-        float: right;
-      }
-    }
+  }
+  .el-col .description {
+    overflow: hidden;
+    height: 20px;
+  }
+  .el-col .info {
+    color: #bfcbd9;
+  }
+  .el-col .info .name {
+    float: left;
+  }
+  .el-col .info .author {
+    float: right;
   }
   .box {
     position: relative;
-    .tag {
-      position: absolute;
-      right: 0;
-      top: 0;
-      background-color: #324157;
-      color: #fff;
-    }
+  }
+  .box .tag {
+    position: absolute;
+    right: 0;
+    top: 0;
+    background-color: #324157;
+    color: #fff;
   }
   .time {
     font-size: 13px;

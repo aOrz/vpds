@@ -2,29 +2,28 @@ const u = require('../lib/utils.js');
 const path = require('path');
 const config = require('../../config/index.js');
 const mysql = require('./mysql.js');
-async function cpModule(fromName, params, fromPath = path.resolve(config.srcPath, '../node_modules')) {
-  let toPath = path.resolve(config.srcPath, 'modules', params.name || params);
-  fromPath = path.resolve(fromPath, fromName);
-  let exits = u.moduleExits(params.name || params);
-  if (exits.code == 1) {
-    return;
+const validation = require('../lib/validation.js');
+
+async function copy(kind, fromName, params, fromPath) {
+  const name = params.name || params;
+  const toPath = validation.projectPath(config.srcPath, kind, name);
+  const source = validation.within(fromPath, fromName);
+  const result = u.cpModule(source, toPath, {name, author: config.user.name});
+  if (result.code !== 0) return result;
+  // save() reads the completed, renamed manifest; never record a failed copy.
+  try {
+    await mysql.save(kind, name);
+  } catch (error) {
+    return {code: 1, stderr: '文件已复制，但数据库保存失败: ' + error.message};
   }
-  mysql.save('module', params.name || params);
-  return u.cpModule(fromPath, toPath, {name: params.name || params, author:  config.user.name});
+  return result;
 }
 
-async function cpPage(fromName, params, fromPath = path.resolve(config.srcPath, '../node_modules')) {
-  let toPath = path.resolve(config.srcPath, 'pages', params.name || params);
-  fromPath = path.resolve(fromPath, fromName);
-  let exits = u.moduleExits(params.name || params);
-  if (exits.code == 1) {
-    return;
-  }
-  mysql.save('page', params.name || params);
-  return u.cpModule(fromPath, toPath, {name: params.name || params, author:  config.user.name});
+function cpModule(fromName, params, fromPath = path.resolve(config.srcPath, '../node_modules')) {
+  return copy('module', fromName, params, fromPath);
 }
 
-module.exports = {
-  cpModule,
-  cpPage
-} 
+function cpPage(fromName, params, fromPath = path.resolve(config.srcPath, '../node_modules')) {
+  return copy('page', fromName, params, fromPath);
+}
+module.exports = {cpModule, cpPage};

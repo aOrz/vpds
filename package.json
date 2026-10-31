@@ -5,8 +5,10 @@
   "author": "王振 <rememberwz@gmail.com>",
   "private": true,
   "scripts": {
-    "dev": "supervisor -w server ./server/app.js",
-    "start": "node ./server/app.js"
+    "dev": "node --watch ./server/app.js",
+    "start": "node ./server/app.js",
+    "test": "node --test test/*.test.js",
+    "build:ui": "npm --prefix server/src/app run build"
   },
   "dependencies": {
     "glob": "^7.1.1",
@@ -65,8 +67,8 @@
     "webpack-merge": "^2.6.1"
   },
   "engines": {
-    "node": ">= 7.0.0",
-    "npm": ">= 3.0.0"
+    "node": ">=18.11.0",
+    "npm": ">=8.0.0"
   },
   "browserslist": [
     "> 1%",

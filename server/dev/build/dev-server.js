@@ -21,6 +21,22 @@ var autoOpenBrowser = !!config.dev.autoOpenBrowser
 var proxyTable = config.dev.proxyTable
 
 var app = express()
+// The development bundle and source maps are local too: block DNS rebinding
+// and foreign browser origins before webpack/static/HMR middleware runs.
+app.use(function (req, res, next) {
+  var host = req.headers.host
+  var allowed = ['localhost', '127.0.0.1', '[::1]'].some(function (name) {
+    return host === name + ':' + port
+  })
+  var origin = req.headers.origin
+  var site = req.headers['sec-fetch-site']
+  if (!allowed || (origin && origin !== 'http://' + host) ||
+      (site && site !== 'same-origin' && site !== 'none')) {
+    res.status(403).end('Untrusted development request')
+    return
+  }
+  next()
+})
 var compiler = webpack(webpackConfig)
 var devMiddleware = require('webpack-dev-middleware')(compiler, {
   publicPath: webpackConfig.output.publicPath,
@@ -59,7 +75,7 @@ app.use(hotMiddleware)
 
 // serve pure static assets
 var staticPath = path.posix.join(config.dev.assetsPublicPath, config.dev.assetsSubDirectory)
-app.use(staticPath, express.static('./assets'))
+app.use(staticPath, express.static(path.join(config.dev.dev_path, 'assets')))
 
 var uri = 'http://localhost:' + port
 
@@ -67,7 +83,7 @@ devMiddleware.waitUntilValid(function () {
   console.log('> Listening at ' + uri + '\n')
 })
 
-module.exports = app.listen(port, function (err) {
+module.exports = app.listen(port, '127.0.0.1', function (err) {
   if (err) {
     console.log(err)
     return
@@ -75,6 +91,6 @@ module.exports = app.listen(port, function (err) {
 
   // when env is testing, don't need open it
   if (autoOpenBrowser && process.env.NODE_ENV !== 'testing') {
-    opn(uri + '/dist/html');
+    opn(uri);
   }
 })

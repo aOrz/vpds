@@ -1,4 +1,5 @@
-const shell = require('./shell.js');
+const childProcess = require('child_process');
+const validation = require('./validation.js');
 const config = require('../../config/index.js');
 const path = require('path');
 const fs = require('../lib/fs.js');
@@ -6,60 +7,82 @@ const mysql = require('../modules/mysql.js');
 
 let u ={};
 u.installNpm = function (name) {
-  shell.cd(config.srcPath);
-  return shell.exec(`${config.npmType} install ${name}`);
-}
-
-u.moduleExits = function (name) {
-  let arr = mysql.select(`select * from  package where \`package_name\` = ${name}`);
-  if (arr.length > 0) {
-    return {
-      code: 1,
-      stderr: '模块已存在'
-    }
+  validation.packageName(name);
+  const command = config.npmType || 'npm';
+  if (command !== 'npm' && command !== 'yarn') {
+    throw new Error('Unsupported package manager');
   }
-
-  return {
-      code: 0,
-      stderr: '模块不存在'
-    };
+  const args = command === 'yarn' ? ['add', '--', name] : ['install', '--', name];
+  return new Promise(resolve => {
+    childProcess.execFile(command, args, {cwd: path.resolve(config.srcPath, '..')},
+      (error, stdout, stderr) => resolve({code: error ? (error.code || 1) : 0, stdout, stderr}));
+  });
 }
+
+u.moduleExits = async function (name) {
+  const rows = await mysql.select('SELECT * FROM package WHERE `package_name` = ?', [name]);
+  return {code: rows.length ? 1 : 0, stderr: rows.length ? '模块已存在' : '模块不存在'};
+}
+
+function copyTree(from, to) {
+  fs.readdirSync(from).forEach(name => {
+    const source = path.join(from, name);
+    const target = path.join(to, name);
+    const stat = fs.lstatSync(source);
+    if (stat.isSymbolicLink()) throw new Error('不支持复制符号链接: ' + source);
+    if (stat.isDirectory()) {
+      fs.mkdirSync(target, stat.mode);
+      copyTree(source, target);
+    } else if (stat.isFile()) {
+      fs.writeFileSync(target, fs.readFileSync(source), {flag: 'wx', mode: stat.mode});
+    } else {
+      throw new Error('不支持复制特殊文件: ' + source);
+    }
+  });
+}
+
+function removeTree(directory) {
+  fs.readdirSync(directory).forEach(name => {
+    const filename = path.join(directory, name);
+    if (fs.lstatSync(filename).isDirectory()) removeTree(filename);
+    else fs.unlinkSync(filename);
+  });
+  fs.rmdirSync(directory);
+}
+
 u.cpModule = function (from, to, info) {
-  let o = shell.cd(from);
-  if (o.code != 0) {
-    return {
-      code: 1,
-      stderr: '要复制的模块不存在'
+  let created = false;
+  try {
+    // Parse before creating a destination, then reserve the destination exclusively.
+    const json = JSON.parse(fs.readFileSync(path.join(from, 'package.json'), 'utf8'));
+    // Scoped npm packages occupy @scope/name under their category directory.
+    if (info.name.charAt(0) === '@') {
+      try { fs.mkdirSync(path.dirname(to)); } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+      }
     }
-  }
-  o = shell.cd(to);
-  if (o.code == 0) {
-    return {
-      code: 1,
-      stderr: '模块已存在'
-    }
-  }
-  o = shell.cp('-Rf', from, to);
-  if (o.code == 0) {
-    let str = fs.readFileSync(from + '/package.json', 'utf8');
-    json = JSON.parse(str);
+    fs.mkdirSync(to);
+    created = true;
+    copyTree(from, to);
     json.name = info.name;
-    json.createTime = new Date().getTime();
+    json.createTime = Date.now();
     json.author = info.author || json.author;
-    fs.writeFile(to + '/package.json', JSON.stringify(json, null, '\t'));
+    fs.writeFileSync(path.join(to, 'package.json'), JSON.stringify(json, null, '\t'));
+    return {code: 0, stdout: '', stderr: ''};
+  } catch (error) {
+    if (created) {
+      try { removeTree(to); } catch (cleanupError) {
+        return {code: 1, stderr: error.message + '; 清理未完成: ' + cleanupError.message};
+      }
+    }
+    return {code: 1, stderr: error.code === 'EEXIST' ? '模块已存在' : error.message};
   }
-  return o;
 }
 
 u.alterJson = function (filePath, data, toPath) {
-  let json = require(filePath);
-  for(let i in data) {
-    json[i] = data[i];
-  }
-  if (!toPath) {
-    toPath = filePath;
-  }
-  fs.writeFile(toPath, JSON.stringify(json, null, '\t'));
+  const json = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  Object.keys(data).forEach(key => { json[key] = data[key]; });
+  fs.writeFileSync(toPath || filePath, JSON.stringify(json, null, '\t'));
 }
 
 u.error = function (e) {

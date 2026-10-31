@@ -1,53 +1,58 @@
-const shell = require('../lib/shell.js');
+const fs = require('fs');
 const path = require('path');
+const semver = require('semver');
 const config = require('../../config/index.js');
-const until = require('../lib/utils.js');
+const utils = require('../lib/utils.js');
 const pub = require('../lib/pub.js');
+const processRunner = require('../lib/process.js');
+const validation = require('../lib/validation.js');
 
-async function publishModule(params) {
-  let {name, version, pub_type} = params;
-  shell.cd(config.srcPath);
-  shell.cd('./modules/' + name);
-  let packageJson = require(path.resolve(config.srcPath, 'modules', name, 'package.json'));
-  let lastVersion = pub_type === 'release'  ? packageJson.version : packageJson.lastVersion;
-  until.alterJson(path.resolve(config.srcPath, 'modules', name, 'package.json'), {
-      version: version,
-      lastVersion: lastVersion,
-      demo: config.qiniu[pub_type].url + `/${name}/dist/index.html`,
-      release_url: pub_type === 'release' ? config.qiniu[pub_type].url + `/${name}/dist/index.html` : packageJson.release_url
-    })
-  let o = await shell.exec('npm publish');
-  if (pub_type && o.code === 0) {
-    if (pub_type === 'release') {
-      shell.cd('..');
-      shell.exec('npm install ' + name )
-    };
-    await pub.pub(path.resolve(config.srcPath, 'modules', name), name, pub_type);
+function validate(params) {
+  validation.packageName(params.name);
+  if (!semver.valid(params.version) || !Object.prototype.hasOwnProperty.call(config.qiniu || {}, params.pub_type)) {
+    const error = new Error('Invalid version or publishing environment');
+    error.status = 400;
+    throw error;
   }
-  return  Promise.resolve(o);
 }
 
-async function publishPage(params) {
-  let {name, version, pub_type} = params;
-  shell.cd(config.srcPath);
-  shell.cd('./pages/' + name);
-  let packageJson = require(path.resolve(config.srcPath, 'pages', name, 'package.json'));
-  let lastVersion = pub_type === 'release'  ? packageJson.version : packageJson.lastVersion;
-  until.alterJson(path.resolve(config.srcPath, 'pages', name, 'package.json'), {
-      version: version,
-      lastVersion: lastVersion,
-      release_url:  config.qiniu[pub_type].url + `/${name}/dist/index.html`
-    })
-  let o = await shell.exec('npm publish');
-  if (pub_type && o.code === 0) {
-    await pub.pub(path.resolve(config.srcPath, 'pages', name), name, pub_type);
-    console.log(config.qiniu[pub_type].url + `/${name}/dist/index.html`);
+async function publish(kind, params) {
+  validate(params);
+  const {name, version, pub_type} = params;
+  const project = validation.projectPath(config.srcPath, kind, name);
+  const manifestPath = path.join(project, 'package.json');
+  if (fs.lstatSync(manifestPath).isSymbolicLink()) {
+    const error = new Error('Project manifest must not be a symbolic link');
+    error.status = 400;
+    throw error;
   }
-  return  Promise.resolve(o);
-}
+  const original = fs.readFileSync(manifestPath, 'utf8');
+  const manifest = JSON.parse(original);
+  const url = config.qiniu[pub_type].url + `/${name}/dist/index.html`;
+  const changes = {
+    version,
+    lastVersion: pub_type === 'release' ? manifest.version : manifest.lastVersion
+  };
+  if (kind === 'module') changes.demo = url;
+  if (kind === 'page' || pub_type === 'release') changes.release_url = url;
+  await utils.alterJson(manifestPath, changes);
 
+  const result = await processRunner.run('npm', ['publish'], {cwd: project});
+  if (result.code !== 0) {
+    // A failed npm publish must not leave the local project at an unpublished version.
+    fs.writeFileSync(manifestPath, original);
+    return result;
+  }
+  await pub.pub(project, name, pub_type);
+  if (kind === 'module' && pub_type === 'release') {
+    const installed = await utils.installNpm(name);
+    if (installed.code !== 0) return installed;
+  }
+  return result;
+}
 
 module.exports = {
-  publishModule: publishModule,
-  publishPage: publishPage
-}
+  validate,
+  publishModule: params => publish('module', params),
+  publishPage: params => publish('page', params)
+};
